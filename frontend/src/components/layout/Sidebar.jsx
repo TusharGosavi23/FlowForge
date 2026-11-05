@@ -1,3 +1,5 @@
+import { NavLink } from 'react-router-dom'
+
 import {
   LayoutDashboard,
   FolderKanban,
@@ -9,18 +11,19 @@ import {
 } from 'lucide-react'
 
 const menuItems = [
-  { name: 'Dashboard', icon: LayoutDashboard },
-  { name: 'Projects', icon: FolderKanban },
-  { name: 'My Tasks', icon: CheckSquare },
-  { name: 'Team', icon: Users },
+  { name: 'Dashboard', path: '/', icon: LayoutDashboard },
+  { name: 'Projects', path: '/projects', icon: FolderKanban },
+  { name: 'My Tasks', path: '/tasks', icon: CheckSquare },
+  { name: 'Team', path: '/team', icon: Users },
 ]
 
 function Sidebar({ isOpen, setIsOpen }) {
   return (
-    <aside className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-slate-800 bg-slate-950 text-white transition-transform duration-300 lg:static lg:translate-x-0 ${
-      isOpen ? 'translate-x-0' : '-translate-x-full'
-    }`}>
-
+    <aside
+      className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-slate-800 bg-slate-950 text-white transition-transform duration-300 lg:static lg:translate-x-0 ${
+        isOpen ? 'translate-x-0' : '-translate-x-full'
+      }`}
+    >
       <div className="flex h-20 items-center justify-between border-b border-slate-800 px-6">
         <h1 className="text-2xl font-bold text-blue-500">
           TeamFlow<span className="text-white">.</span>
@@ -41,17 +44,21 @@ function Sidebar({ isOpen, setIsOpen }) {
             const Icon = item.icon
 
             return (
-              <button
-                key={item.name}
-                className={`flex w-full items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition ${
-                  item.name === 'Dashboard'
-                    ? 'bg-blue-600 text-white'
-                    : 'text-slate-400 hover:bg-slate-800 hover:text-white'
-                }`}
+              <NavLink
+                key={item.path}
+                to={item.path}
+                onClick={() => setIsOpen(false)}
+                className={({ isActive }) =>
+                  `flex w-full items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition ${
+                    isActive
+                      ? 'bg-blue-600 text-white'
+                      : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+                  }`
+                }
               >
                 <Icon size={19} />
                 {item.name}
-              </button>
+              </NavLink>
             )
           })}
         </nav>
