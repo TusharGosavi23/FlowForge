@@ -6,6 +6,8 @@ import Dashboard from './pages/Dashboard'
 import Projects from './pages/Projects'
 import ProjectDetails from './pages/ProjectDetails'
 import Tasks from './pages/Tasks'
+import KanbanBoard from './pages/KanbanBoard'
+
 function App() {
   return (
     <BrowserRouter>
@@ -44,6 +46,11 @@ function App() {
       <Tasks />
     </MainLayout>
   }
+/>
+
+<Route
+  path="/kanban"
+  element={<MainLayout><KanbanBoard /></MainLayout>}
 />
 
    

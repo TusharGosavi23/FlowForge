@@ -1,0 +1,15 @@
+# VS Code
+.vscode/
+
+# Local database credentials
+backend/**/src/main/resources/application.properties
+
+# Java build output
+backend/**/target/
+
+# Logs
+*.log
+
+# Node
+node_modules/
+dist/
