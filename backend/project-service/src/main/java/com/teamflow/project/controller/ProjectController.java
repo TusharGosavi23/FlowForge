@@ -1,13 +1,12 @@
-
 package com.teamflow.project.controller;
 
-import com.teamflow.project.dto.ProjectRequest;
 import com.teamflow.project.model.Project;
 import com.teamflow.project.service.ProjectService;
-import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
-import org.springframework.security.core.Authentication;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/projects")
@@ -20,16 +19,34 @@ public class ProjectController {
     }
 
     @PostMapping
-    @ResponseStatus(HttpStatus.CREATED)
-    public Project createProject(
-            @Valid @RequestBody ProjectRequest request,
-            Authentication authentication) {
+    public ResponseEntity<Project> createProject(@RequestBody Project project) {
+        Project createdProject = projectService.createProject(project);
+        return ResponseEntity.status(HttpStatus.CREATED).body(createdProject);
+    }
 
-        String ownerEmail = authentication.getName();
+    @GetMapping
+    public ResponseEntity<List<Project>> getAllProjects() {
+        return ResponseEntity.ok(projectService.getAllProjects());
+    }
 
-        return projectService.createProject(
-                request.getName(),
-                request.getDescription(),
-                ownerEmail);
+    @GetMapping("/{id}")
+    public ResponseEntity<Project> getProjectById(@PathVariable Long id) {
+        return ResponseEntity.ok(projectService.getProjectById(id));
+    }
+
+    @PutMapping("/{id}")
+    public ResponseEntity<Project> updateProject(
+            @PathVariable Long id,
+            @RequestBody Project project) {
+
+        Project updatedProject = projectService.updateProject(id, project);
+        return ResponseEntity.ok(updatedProject);
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteProject(@PathVariable Long id) {
+
+        projectService.deleteProject(id);
+        return ResponseEntity.noContent().build();
     }
 }
