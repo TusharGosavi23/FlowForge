@@ -1,6 +1,17 @@
-import { Search, Bell, Menu } from 'lucide-react'
+
+import { Search, Bell, Menu, LogOut } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { useAuth } from '../../context/AuthContext'
 
 function Header({ setIsOpen }) {
+  const { logout } = useAuth()
+  const navigate = useNavigate()
+
+  const handleLogout = () => {
+    logout()
+    navigate('/login', { replace: true })
+  }
+
   return (
     <header className="flex h-20 items-center justify-between border-b border-slate-200 bg-white px-5 md:px-8">
 
@@ -41,6 +52,15 @@ function Header({ setIsOpen }) {
         <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 font-bold text-blue-700">
           TG
         </div>
+
+        <button
+          onClick={handleLogout}
+          title="Logout"
+          className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-red-50 hover:text-red-600"
+        >
+          <LogOut size={18} />
+          <span className="hidden sm:inline">Logout</span>
+        </button>
 
       </div>
     </header>

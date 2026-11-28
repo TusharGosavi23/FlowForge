@@ -1,68 +1,62 @@
+
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-
 import {
-  Plus,
-  Search,
-  FolderKanban,
-  CalendarDays,
-  MoreVertical,
-  Pencil,
-  Trash2,
-  X,
-  Filter,
-  LayoutGrid,
+  Plus, Search, FolderKanban, CalendarDays, MoreVertical,
+  Pencil, Trash2, X, Filter, LayoutGrid,
 } from 'lucide-react'
-
-const initialProjects = [
-  {
-    id: 1,
-    name: 'Website Redesign',
-    description: 'Redesign the company website with a modern and responsive interface.',
-    status: 'In Progress',
-    priority: 'High',
-    deadline: '2026-12-15',
-    progress: 75,
-  },
-  {
-    id: 2,
-    name: 'Mobile Application',
-    description: 'Develop a mobile application for customer engagement.',
-    status: 'In Progress',
-    priority: 'Medium',
-    deadline: '2027-01-20',
-    progress: 45,
-  },
-  {
-    id: 3,
-    name: 'CRM Integration',
-    description: 'Integrate CRM services with the existing backend system.',
-    status: 'Completed',
-    priority: 'High',
-    deadline: '2026-11-20',
-    progress: 100,
-  },
-]
+import { projectService } from '../services/projectService'
 
 const emptyForm = {
   name: '',
   description: '',
   priority: 'Medium',
-  status: 'Not Started',
+  status: 'In Progress',
   deadline: '',
   progress: 0,
 }
 
+function getOwnerEmail() {
+  try {
+    const token = localStorage.getItem('token')
+    if (!token) return ''
+
+    const payload = JSON.parse(atob(token.split('.')[1]))
+    return payload.sub || payload.email || ''
+  } catch {
+    return ''
+  }
+}
+
+function mapProject(project) {
+  const status =
+    project.status === 'COMPLETED' ? 'Completed' :
+    project.status === 'NOT_STARTED' ? 'Not Started' :
+    'In Progress'
+
+  return {
+    ...project,
+    status,
+    priority: 'Medium',
+    deadline: '',
+    progress: status === 'Completed' ? 100 : 0,
+    description: project.description || '',
+  }
+}
+
+function backendStatus(status) {
+  if (status === 'Completed') return 'COMPLETED'
+  if (status === 'Not Started') return 'NOT_STARTED'
+  return 'ACTIVE'
+}
+
 function Projects() {
   const navigate = useNavigate()
-  const [projects, setProjects] = useState(() => {
-    try {
-      const savedProjects = localStorage.getItem('teamflow-projects')
-      return savedProjects ? JSON.parse(savedProjects) : initialProjects
-    } catch {
-      return initialProjects
-    }
-  })
+
+  const [projects, setProjects] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
 
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('All')
@@ -71,22 +65,32 @@ function Projects() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingId, setEditingId] = useState(null)
   const [activeMenu, setActiveMenu] = useState(null)
-
   const [formData, setFormData] = useState(emptyForm)
 
-  // Save projects whenever they change
-  useEffect(() => {
-    localStorage.setItem('teamflow-projects', JSON.stringify(projects))
-  }, [projects])
+  const loadProjects = async () => {
+    setLoading(true)
+    setError('')
 
-  // Open modal for creating a project
+    try {
+      const data = await projectService.getAll()
+      setProjects((data || []).map(mapProject))
+    } catch (err) {
+      setError(err.message || 'Failed to load projects.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadProjects()
+  }, [])
+
   const openCreateModal = () => {
     setEditingId(null)
     setFormData(emptyForm)
     setIsModalOpen(true)
   }
 
-  // Open modal for editing a project
   const openEditModal = (project) => {
     setEditingId(project.id)
     setFormData({
@@ -110,57 +114,58 @@ function Projects() {
     }))
   }
 
-  // Create or update project
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
+    setSaving(true)
+    setError('')
 
-    const updatedProject = {
-      ...formData,
-      progress:
-        formData.status === 'Completed'
-          ? 100
-          : Number(formData.progress),
+    const payload = {
+      name: formData.name.trim(),
+      description: formData.description.trim(),
+      ownerEmail: getOwnerEmail(),
+      status: backendStatus(formData.status),
     }
 
-    if (editingId !== null) {
-      setProjects((previous) =>
-        previous.map((project) =>
-          project.id === editingId
-            ? { ...project, ...updatedProject }
-            : project
-        )
-      )
-    } else {
-      setProjects((previous) => [
-        {
-          id: Date.now(),
-          ...updatedProject,
-        },
-        ...previous,
-      ])
-    }
+    try {
+      if (editingId !== null) {
+        await projectService.update(editingId, payload)
+      } else {
+        await projectService.create(payload)
+      }
 
-    setIsModalOpen(false)
-    setEditingId(null)
-    setFormData(emptyForm)
+      await loadProjects()
+      setIsModalOpen(false)
+      setEditingId(null)
+      setFormData(emptyForm)
+    } catch (err) {
+      setError(err.message || 'Failed to save project.')
+    } finally {
+      setSaving(false)
+    }
   }
 
-  // Delete project
-  const handleDelete = (id) => {
+  const handleDelete = async (id) => {
     const confirmed = window.confirm(
-      'Are you sure you want to delete this project?'
+      'Are you sure you want to delete this project? Its tasks will also be deleted.'
     )
 
-    if (confirmed) {
-      setProjects((previous) =>
-        previous.filter((project) => project.id !== id)
-      )
+    if (!confirmed) {
+      setActiveMenu(null)
+      return
+    }
+
+    setError('')
+
+    try {
+      await projectService.delete(id)
+      setProjects((previous) => previous.filter((p) => p.id !== id))
+    } catch (err) {
+      setError(err.message || 'Failed to delete project.')
     }
 
     setActiveMenu(null)
   }
 
-  // Filter projects
   const filteredProjects = projects.filter((project) => {
     const matchesSearch =
       project.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -225,10 +230,7 @@ function Projects() {
 
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800">
-            Projects
-          </h1>
-
+          <h1 className="text-2xl font-bold text-slate-800">Projects</h1>
           <p className="mt-1 text-sm text-slate-500">
             Create, organize and track your team's projects.
           </p>
@@ -243,6 +245,17 @@ function Projects() {
         </button>
       </div>
 
+      {/* Error message */}
+
+      {error && (
+        <div className="flex items-center justify-between rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          <span>{error}</span>
+          <button onClick={() => setError('')}>
+            <X size={18} />
+          </button>
+        </div>
+      )}
+
       {/* Statistics */}
 
       <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
@@ -252,7 +265,6 @@ function Projects() {
             className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"
           >
             <p className="text-sm text-slate-500">{stat.title}</p>
-
             <div className="mt-3 flex items-center gap-3">
               <span className={`rounded-lg p-2 text-lg font-bold ${stat.color}`}>
                 {stat.value}
@@ -268,7 +280,6 @@ function Projects() {
       <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 md:flex-row">
         <div className="flex flex-1 items-center gap-3 rounded-lg border border-slate-200 px-4">
           <Search size={18} className="text-slate-400" />
-
           <input
             type="text"
             placeholder="Search projects..."
@@ -313,134 +324,140 @@ function Projects() {
           All Projects
         </h2>
 
-        <span className="text-sm text-slate-500">
-          {filteredProjects.length} projects found
-        </span>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={loadProjects}
+            className="text-sm font-medium text-blue-600 hover:text-blue-800"
+          >
+            Refresh
+          </button>
+          <span className="text-sm text-slate-500">
+            {filteredProjects.length} projects found
+          </span>
+        </div>
       </div>
+
+      {/* Loading */}
+
+      {loading && (
+        <div className="rounded-xl border border-slate-200 bg-white p-12 text-center text-slate-500">
+          Loading projects from server...
+        </div>
+      )}
 
       {/* Project cards */}
 
-      <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+      {!loading && (
+        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+          {filteredProjects.map((project) => (
+            <div
+              key={project.id}
+              onClick={() => navigate(`/projects/${project.id}`)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  navigate(`/projects/${project.id}`)
+                }
+              }}
+              role="button"
+              tabIndex={0}
+              className="relative cursor-pointer rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-1 hover:border-blue-300 hover:shadow-md"
+            >
+              <div className="flex items-start justify-between">
+                <div className="rounded-lg bg-blue-100 p-3 text-blue-600">
+                  <FolderKanban size={23} />
+                </div>
 
-       {filteredProjects.map((project) => (
-  <div
-    key={project.id}
-    onClick={() => navigate(`/projects/${project.id}`)}
-    onKeyDown={(e) => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault()
-        navigate(`/projects/${project.id}`)
-      }
-    }}
-    role="button"
-    tabIndex={0}
-    className="relative cursor-pointer rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-1 hover:border-blue-300 hover:shadow-md"
-  >
-            <div className="flex items-start justify-between">
-              <div className="rounded-lg bg-blue-100 p-3 text-blue-600">
-                <FolderKanban size={23} />
+                <div className="relative" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    onClick={() =>
+                      setActiveMenu(activeMenu === project.id ? null : project.id)
+                    }
+                    className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"
+                  >
+                    <MoreVertical size={20} />
+                  </button>
+
+                  {activeMenu === project.id && (
+                    <div className="absolute right-0 top-10 z-20 w-40 rounded-lg border border-slate-200 bg-white py-2 shadow-lg">
+                      <button
+                        onClick={() => openEditModal(project)}
+                        className="flex w-full items-center gap-2 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50"
+                      >
+                        <Pencil size={15} />
+                        Edit
+                      </button>
+
+                      <button
+                        onClick={() => handleDelete(project.id)}
+                        className="flex w-full items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+                      >
+                        <Trash2 size={15} />
+                        Delete
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
 
-             <div className="relative" onClick={(e) => e.stopPropagation()}>
-                <button
-                  onClick={() =>
-                    setActiveMenu(
-                      activeMenu === project.id ? null : project.id
-                    )
-                  }
-                  className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"
-                >
-                  <MoreVertical size={20} />
-                </button>
+              <h3 className="mt-5 text-lg font-bold text-slate-800">
+                {project.name}
+              </h3>
 
-                {activeMenu === project.id && (
-                  <div className="absolute right-0 top-10 z-20 w-40 rounded-lg border border-slate-200 bg-white py-2 shadow-lg">
-                    <button
-                      onClick={() => openEditModal(project)}
-                      className="flex w-full items-center gap-2 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50"
-                    >
-                      <Pencil size={15} />
-                      Edit
-                    </button>
+              <p className="mt-2 min-h-10 text-sm text-slate-500">
+                {project.description || 'No description provided.'}
+              </p>
 
-                    <button
-                      onClick={() => handleDelete(project.id)}
-                      className="flex w-full items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50"
-                    >
-                      <Trash2 size={15} />
-                      Delete
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
+              <div className="mt-5 flex flex-wrap items-center gap-2">
+                <span className={`rounded-full px-3 py-1 text-xs font-semibold ${getStatusStyle(project.status)}`}>
+                  {project.status}
+                </span>
 
-            <h3 className="mt-5 text-lg font-bold text-slate-800">
-              {project.name}
-            </h3>
-
-            <p className="mt-2 min-h-10 text-sm text-slate-500">
-              {project.description || 'No description provided.'}
-            </p>
-
-            <div className="mt-5 flex flex-wrap items-center gap-2">
-              <span
-                className={`rounded-full px-3 py-1 text-xs font-semibold ${getStatusStyle(project.status)}`}
-              >
-                {project.status}
-              </span>
-
-              <span
-                className={`rounded-full px-3 py-1 text-xs font-semibold ${getPriorityStyle(project.priority)}`}
-              >
-                {project.priority} Priority
-              </span>
-            </div>
-
-            <div className="mt-5">
-              <div className="mb-2 flex justify-between text-xs">
-                <span className="text-slate-500">Project Progress</span>
-
-                <span className="font-semibold text-slate-700">
-                  {project.progress}%
+                <span className={`rounded-full px-3 py-1 text-xs font-semibold ${getPriorityStyle(project.priority)}`}>
+                  {project.priority} Priority
                 </span>
               </div>
 
-              <div className="h-2 overflow-hidden rounded-full bg-slate-100">
-                <div
-                  className="h-full rounded-full bg-blue-600 transition-all"
-                  style={{ width: `${project.progress}%` }}
-                />
+              <div className="mt-5">
+                <div className="mb-2 flex justify-between text-xs">
+                  <span className="text-slate-500">Project Progress</span>
+                  <span className="font-semibold text-slate-700">
+                    {project.progress}%
+                  </span>
+                </div>
+
+                <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+                  <div
+                    className="h-full rounded-full bg-blue-600 transition-all"
+                    style={{ width: `${project.progress}%` }}
+                  />
+                </div>
+              </div>
+
+              <div className="mt-5 flex items-center gap-2 border-t border-slate-100 pt-4 text-xs text-slate-500">
+                <CalendarDays size={15} />
+                Deadline: {project.deadline || 'Not set'}
               </div>
             </div>
-
-            <div className="mt-5 flex items-center gap-2 border-t border-slate-100 pt-4 text-xs text-slate-500">
-              <CalendarDays size={15} />
-
-              Deadline: {project.deadline || 'Not set'}
-            </div>
-          </div>
-        ))}
-
-      </div>
+          ))}
+        </div>
+      )}
 
       {/* Empty state */}
 
-      {filteredProjects.length === 0 && (
+      {!loading && filteredProjects.length === 0 && (
         <div className="rounded-xl border border-dashed border-slate-300 bg-white p-12 text-center">
           <FolderKanban className="mx-auto text-slate-400" size={35} />
-
           <h3 className="mt-3 font-semibold text-slate-700">
             No projects found
           </h3>
-
           <p className="mt-1 text-sm text-slate-500">
             Try changing your filters or create a new project.
           </p>
         </div>
       )}
 
-      {/* Create / Edit modal */}
+      {/* Create/Edit modal */}
 
       {isModalOpen && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto bg-slate-950/50 p-4">
@@ -451,7 +468,6 @@ function Projects() {
                 <h2 className="text-xl font-bold text-slate-800">
                   {editingId !== null ? 'Edit Project' : 'Create New Project'}
                 </h2>
-
                 <p className="mt-1 text-sm text-slate-500">
                   Enter your project information below.
                 </p>
@@ -471,7 +487,6 @@ function Projects() {
                 <label className="mb-2 block text-sm font-medium text-slate-700">
                   Project Name *
                 </label>
-
                 <input
                   type="text"
                   name="name"
@@ -479,7 +494,7 @@ function Projects() {
                   onChange={handleChange}
                   placeholder="Enter project name"
                   required
-                  maxLength={100}
+                  maxLength={150}
                   className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                 />
               </div>
@@ -488,91 +503,34 @@ function Projects() {
                 <label className="mb-2 block text-sm font-medium text-slate-700">
                   Description
                 </label>
-
                 <textarea
                   name="description"
                   value={formData.description}
                   onChange={handleChange}
                   placeholder="Describe your project"
                   rows="3"
-                  maxLength={500}
                   className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-slate-700">
-                    Priority
-                  </label>
-
-                  <select
-                    name="priority"
-                    value={formData.priority}
-                    onChange={handleChange}
-                    className="w-full rounded-lg border border-slate-300 px-3 py-3 text-sm outline-none focus:border-blue-500"
-                  >
-                    <option>Low</option>
-                    <option>Medium</option>
-                    <option>High</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-slate-700">
-                    Status
-                  </label>
-
-                  <select
-                    name="status"
-                    value={formData.status}
-                    onChange={handleChange}
-                    className="w-full rounded-lg border border-slate-300 px-3 py-3 text-sm outline-none focus:border-blue-500"
-                  >
-                    <option>Not Started</option>
-                    <option>In Progress</option>
-                    <option>Completed</option>
-                  </select>
-                </div>
-
-              </div>
-
               <div>
                 <label className="mb-2 block text-sm font-medium text-slate-700">
-                  Deadline
+                  Status
                 </label>
-
-                <input
-                  type="date"
-                  name="deadline"
-                  value={formData.deadline}
+                <select
+                  name="status"
+                  value={formData.status}
                   onChange={handleChange}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-3 text-sm outline-none focus:border-blue-500"
-                />
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-3 text-sm outline-none focus:border-blue-500"
+                >
+                  <option>Not Started</option>
+                  <option>In Progress</option>
+                  <option>Completed</option>
+                </select>
               </div>
 
-              <div>
-                <div className="mb-2 flex justify-between">
-                  <label className="text-sm font-medium text-slate-700">
-                    Progress
-                  </label>
-
-                  <span className="text-sm font-semibold text-blue-600">
-                    {formData.status === 'Completed' ? 100 : formData.progress}%
-                  </span>
-                </div>
-
-                <input
-                  type="range"
-                  name="progress"
-                  min="0"
-                  max="100"
-                  value={formData.status === 'Completed' ? 100 : formData.progress}
-                  onChange={handleChange}
-                  disabled={formData.status === 'Completed'}
-                  className="w-full accent-blue-600"
-                />
+              <div className="rounded-lg bg-slate-50 p-3 text-xs text-slate-500">
+                Priority, deadline and progress will be connected to the backend in a later enhancement.
               </div>
 
               <div className="flex justify-end gap-3 pt-4">
@@ -586,9 +544,10 @@ function Projects() {
 
                 <button
                   type="submit"
-                  className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
+                  disabled={saving}
+                  className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
                 >
-                  {editingId !== null ? 'Save Changes' : 'Create Project'}
+                  {saving ? 'Saving...' : editingId !== null ? 'Save Changes' : 'Create Project'}
                 </button>
               </div>
 
